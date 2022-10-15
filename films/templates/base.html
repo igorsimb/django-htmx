@@ -29,6 +29,15 @@
         {% block content %}
         {% endblock %}
     </div>
-    
+
+{# Dynamically add CSRF token when delete-film function (in views.py) triggers #}
+{# Source: https://htmx.org/events/#htmx:configRequest #}
+{# From Django docs (see "... alternative method" https://docs.djangoproject.com/en/4.1/howto/csrf/#using-csrf-protection-with-ajax #}
+<script>
+    document.body.addEventListener('htmx:configRequest', (event) => {
+        event.detail.headers['X-CSRFToken'] = '{{ csrf_token }}';
+    });
+</script>
+
 </body>
 </html>
