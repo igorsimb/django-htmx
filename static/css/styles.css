@@ -2,12 +2,18 @@
     height: 100px;
 }
 
-.success {
+.alert-error {
+    color: #842029;
+    background-color: #f8d7da;
+    border: #f5c2c7;
+}
+
+.registration_success {
     color: green;
     transition: all ease-in .5s;
 }
 
-.error {
+.registration_error {
     color: red;
     font-size: 50px;
     transform: rotate(45deg);
