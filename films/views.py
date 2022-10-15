@@ -44,7 +44,6 @@ def check_username(request):
     else:
         return HttpResponse('<div id="username-err" class="registration_success">This username is available.</div>')
 
-
 class FilmList(LoginRequiredMixin, ListView):
     model = Film
     template_name = "films.html"
@@ -70,7 +69,6 @@ def add_film(request):
     films = request.user.films.all()
     messages.success(request, f'Added "{name}" to the list of films')
     return render(request, "partials/film-list.html", {'films': films})
-
 
 @login_required
 @require_http_methods('DELETE')  # allow only DELETE http requests (not PUT or POST) - for security

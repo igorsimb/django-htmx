@@ -2,6 +2,17 @@
     height: 100px;
 }
 
+.fade-in-out {
+	animation: fadeinout 5s linear forwards;
+  	opacity: 0;
+}
+
+@keyframes fadeinout {
+  20% { opacity: 1; } /* fade in */
+  80% { opacity: 1; } /* stay at full visibility */
+  100% { opacity: 0; } /* fade out */
+}
+
 .alert-error {
     color: #842029;
     background-color: #f8d7da;
