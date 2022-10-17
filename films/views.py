@@ -13,9 +13,8 @@ from django.views.decorators.http import require_http_methods
 from django.contrib import messages
 
 from films.forms import RegisterForm
-
-from films.models import Film
-
+from films.models import Film, UserFilms
+from films.utils import get_max_order, reorder
 
 class IndexView(TemplateView):
     template_name = 'index.html'
@@ -50,8 +49,8 @@ class FilmList(LoginRequiredMixin, ListView):
     context_object_name = "films"
 
     def get_queryset(self):
-        user = self.request.user
-        return user.films.all()
+        return UserFilms.objects.filter(user=self.request.user)
+
 
 
 @login_required
@@ -63,32 +62,41 @@ def add_film(request):
     film, created = Film.objects.get_or_create(name=name)  # OR film = Film.objects.get_or_create(name=name)[0]
 
     # add the film to the user's list
-    request.user.films.add(film)
+    # if we don't have a film with this name for this user, create one
+    if not UserFilms.objects.filter(films=film, user=request.user).exists():
+        UserFilms.objects.create(
+            films=film,
+            user=request.user,
+            order=get_max_order(request.user))
 
     # return template with all of the user's films
-    films = request.user.films.all()
+    films = UserFilms.objects.filter(user=request.user)
     messages.success(request, f'Added "{name}" to the list of films')
     return render(request, "partials/film-list.html", {'films': films})
 
 @login_required
 @require_http_methods('DELETE')  # allow only DELETE http requests (not PUT or POST) - for security
 def delete_film(request, pk):
+    userfilm = UserFilms.objects.get(pk=pk)
     # remove the film from the user's list
-    request.user.films.remove(pk)
-    userfilm = Film.objects.get(pk=pk)
+    UserFilms.objects.get(pk=pk).delete()
+    reorder(request.user)
+
 
     # return the template fragment
-    films = request.user.films.all()
-    messages.error(request, f'Deleted "{userfilm}" from the list of films')
+    films = UserFilms.objects.filter(user=request.user)
+    messages.error(request, f'Deleted "{userfilm.films}" from the list of films')
     return render(request, "partials/film-list.html", {'films': films})
 
 
 def search_film(request):
     search_text = request.POST.get('search')  # what user typed into the search field
 
-    userfilms = request.user.films.all() # all films that user added (left list)
+    # look up all films that containt the text
+    # exclude user films
+    userfilms = UserFilms.objects.filter(user=request.user) # all films that user added (left list)
     results = Film.objects.filter(name__icontains=search_text).exclude(
-        name__in=userfilms.values_list('name', flat=True)
+        name__in=userfilms.values_list('films__name', flat=True)
     )
     context = {'results': results}
     return render(request, "partials/search-results.html", context)
@@ -96,3 +104,17 @@ def search_film(request):
 
 def clear(request):
     return HttpResponse("")
+
+
+def sort(request):
+    # we need to accept request from sortable.js
+    # film_order comes from film-list.html: <input type="hidden" name="film_order" value="{{ film.pk }}">
+    films_pks_order = request.POST.getlist('film_order')
+    films = []
+    for idx, film_pk in enumerate(films_pks_order, start=1):
+        userfilm = UserFilms.objects.get(pk=film_pk)
+        userfilm.order = idx
+        userfilm.save()
+        films.append(userfilm)
+
+    return render(request, "partials/film-list.html", {'films': films})
