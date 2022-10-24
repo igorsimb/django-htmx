@@ -1,6 +1,5 @@
-from django.http.response import HttpResponse, HttpResponsePermanentRedirect
 from django.shortcuts import render, get_object_or_404
-from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.contrib.auth.views import LoginView
 from django.urls import reverse_lazy
 from django.http import HttpResponse
@@ -11,10 +10,12 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.decorators.http import require_http_methods
 from django.contrib import messages
+from django.core.paginator import Paginator
 
 from films.forms import RegisterForm
 from films.models import Film, UserFilms
 from films.utils import get_max_order, reorder
+
 
 class IndexView(TemplateView):
     template_name = 'index.html'
@@ -43,12 +44,13 @@ def check_username(request):
     else:
         return HttpResponse('<div id="username-err" class="registration_success">This username is available.</div>')
 
+
 class FilmList(LoginRequiredMixin, ListView):
     model = UserFilms
     template_name = "films.html"
     context_object_name = "films"
     # can be used with HTMX infinite scroll https://htmx.org/examples/infinite-scroll/
-    paginate_by = 15
+    paginate_by = settings.PAGINATE_BY
 
     def get_template_names(self):
         # pip install django_htmx
@@ -58,8 +60,7 @@ class FilmList(LoginRequiredMixin, ListView):
         return 'films.html'
 
     def get_queryset(self):
-        return UserFilms.objects.filter(user=self.request.user)
-
+        return UserFilms.objects.prefetch_related('films').filter(user=self.request.user)
 
 
 @login_required
@@ -83,6 +84,7 @@ def add_film(request):
     messages.success(request, f'Added "{name}" to the list of films')
     return render(request, "partials/film-list.html", {'films': films})
 
+
 @login_required
 @require_http_methods('DELETE')  # allow only DELETE http requests (not PUT or POST) - for security
 def delete_film(request, pk):
@@ -90,7 +92,6 @@ def delete_film(request, pk):
     # remove the film from the user's list
     UserFilms.objects.get(pk=pk).delete()
     reorder(request.user)
-
 
     # return the template fragment
     films = UserFilms.objects.filter(user=request.user)
@@ -103,7 +104,7 @@ def search_film(request):
 
     # look up all films that containt the text
     # exclude user films
-    userfilms = UserFilms.objects.filter(user=request.user) # all films that user added (left list)
+    userfilms = UserFilms.objects.filter(user=request.user)  # all films that user added (left list)
     results = Film.objects.filter(name__icontains=search_text).exclude(
         name__in=userfilms.values_list('films__name', flat=True)
     )
@@ -120,19 +121,42 @@ def sort(request):
     # film_order comes from film-list.html: <input type="hidden" name="film_order" value="{{ film.pk }}">
     films_pks_order = request.POST.getlist('film_order')
     films = []
+    updated_films = []
+
+    # fetch user's films in advance (rather than once per loop)
+    userfilms = UserFilms.objects.prefetch_related('films').filter(user=request.user)
+
     for idx, film_pk in enumerate(films_pks_order, start=1):
-        userfilm = UserFilms.objects.get(pk=film_pk)
-        userfilm.order = idx
-        userfilm.save()
+        # userfilm = UserFilms.objects.get(pk=film_pk)
+
+        # find instance w/ the correct PK
+        userfilm = next(u for u in userfilms if u.pk == int(film_pk))
+
+        # add changed movies only to an updated_films list
+        # e.g. if we move film #1 to spot #5, only films #1-#5 will update order, instead of ALL of them
+        # it saves time considerably
+        if userfilm.order != idx:
+            userfilm.order = idx
+            updated_films.append(userfilm)
         films.append(userfilm)
 
-    return render(request, "partials/film-list.html", {'films': films})
+    # bulk_update changed UserFilms's 'order' field
+    UserFilms.objects.bulk_update(updated_films, ['order'])
+
+    paginator = Paginator(films, settings.PAGINATE_BY)
+    page_number = len(films_pks_order) / settings.PAGINATE_BY
+    page_obj = paginator.get_page(page_number)
+    context = {'films': films, 'page_obj': page_obj}
+
+    return render(request, "partials/film-list.html", context)
+
 
 @login_required
 def detail(request, pk):
     userfilm = get_object_or_404(UserFilms, pk=pk)
     context = {'userfilm': userfilm}
     return render(request, 'partials/film-detail.html', context)
+
 
 @login_required
 def films_partial(request):
@@ -143,7 +167,7 @@ def films_partial(request):
 def upload_photo(request, pk):
     userfilm = get_object_or_404(UserFilms, pk=pk)
     print(request.FILES)
-    photo = request.FILES.get('photo') # <input type="file" name="photo"> in film-detail.html
+    photo = request.FILES.get('photo')  # <input type="file" name="photo"> in film-detail.html
     userfilm.films.photo.save(photo.name, photo)
     context = {'userfilm': userfilm}
     return render(request, 'partials/film-detail.html', context)
