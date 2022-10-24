@@ -44,9 +44,18 @@ def check_username(request):
         return HttpResponse('<div id="username-err" class="registration_success">This username is available.</div>')
 
 class FilmList(LoginRequiredMixin, ListView):
-    model = Film
+    model = UserFilms
     template_name = "films.html"
     context_object_name = "films"
+    # can be used with HTMX infinite scroll https://htmx.org/examples/infinite-scroll/
+    paginate_by = 15
+
+    def get_template_names(self):
+        # pip install django_htmx
+        # Source: https://django-htmx.readthedocs.io/en/latest/tips.html
+        if self.request.htmx:  # if request comes from HTMX
+            return 'partials/film-list-elements.html.'
+        return 'films.html'
 
     def get_queryset(self):
         return UserFilms.objects.filter(user=self.request.user)
