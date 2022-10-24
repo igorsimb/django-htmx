@@ -27,6 +27,7 @@ class Film(models.Model):
     #     ),
     # 5. Migrate
     users = models.ManyToManyField(User, related_name="films", through="UserFilms")  # user.films.all()
+    photo = models.ImageField(upload_to='film_photos/', null=True, blank=True)
 
     def __str__(self):
         return self.name

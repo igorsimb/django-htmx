@@ -1,5 +1,5 @@
 from django.http.response import HttpResponse, HttpResponsePermanentRedirect
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView
 from django.urls import reverse_lazy
@@ -118,3 +118,23 @@ def sort(request):
         films.append(userfilm)
 
     return render(request, "partials/film-list.html", {'films': films})
+
+@login_required
+def detail(request, pk):
+    userfilm = get_object_or_404(UserFilms, pk=pk)
+    context = {'userfilm': userfilm}
+    return render(request, 'partials/film-detail.html', context)
+
+@login_required
+def films_partial(request):
+    films = UserFilms.objects.filter(user=request.user)
+    return render(request, 'partials/film-list.html', {'films': films})
+
+
+def upload_photo(request, pk):
+    userfilm = get_object_or_404(UserFilms, pk=pk)
+    print(request.FILES)
+    photo = request.FILES.get('photo') # <input type="file" name="photo"> in film-detail.html
+    userfilm.films.photo.save(photo.name, photo)
+    context = {'userfilm': userfilm}
+    return render(request, 'partials/film-detail.html', context)
